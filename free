@@ -1,0 +1,67 @@
+#!/bin/bash
+# Script: Free
+# Descrizione: Mostra dimensione totale e spazio libero dei volumi in /Volumes, escludendo "ProNTFSDrive" e "XX - Data"
+# Utilizza il sistema decimale (GB/TB) e aggiunge colori per una migliore leggibilità
+
+# Definizione dei colori e formattazione
+WHITE='\033[1;37m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m' # Reset colore
+
+# Percentuale minima di spazio libero richiesta
+free_threshold_percentage=15
+
+# Stampa intestazione con colori
+echo -e "${WHITE}Dimensioni e spazio libero per tutti i dischi attivi:${NC}"
+echo -e "${YELLOW}-------------------------------------------------------------------| Soglia minima: ${free_threshold_percentage}% ${NC}"
+
+for vol in /Volumes/*; do
+    volname=$(basename "$vol")
+
+    # Escludi volumi specifici
+    if [[ "$volname" == "ProNTFSDrive" || "$volname" == "XX - Data" ]]; then
+        continue
+    fi
+
+    if [ -d "$vol" ]; then
+        # Usa df -H per ottenere dimensioni in GB/TB
+        read -r total free <<< $(df -H "$vol" | awk 'NR==2 {print $2, $4}')
+
+        # Estrai solo il numero dai valori ottenuti
+        total_value=$(echo "$total" | grep -oE '[0-9]+(\.[0-9]+)?')
+        free_value=$(echo "$free" | grep -oE '[0-9]+(\.[0-9]+)?')
+
+        # Calcola la percentuale di spazio libero
+        free_percentage=$(echo "scale=1; ($free_value / $total_value) * 100" | bc)
+
+        # Calcola la soglia dinamica (15% della capacità totale)
+        threshold_value=$(echo "$total_value * $free_threshold_percentage / 100" | bc -l)
+
+        # Se vuoi decidere tra GB e TB in base al valore, puoi fare:
+        if (( $(echo "$total_value >= 1024" | bc -l) )); then
+            total_value=$(echo "$total_value / 1024" | bc -l)  # Converti in TB se maggiore di 1024
+            threshold_value=$(echo "$threshold_value / 1024" | bc -l)  # Converti anche la soglia in TB
+            unit="TB"
+        else
+            unit="GB"
+        fi
+
+        # Controlla se lo spazio libero è inferiore alla soglia
+        if (( $(echo "$free_value < $threshold_value" | bc -l) )); then
+            free_color=$RED  # Se lo spazio libero è sotto la soglia, usa il rosso
+            volume_icon="⚠️"  # Aggiungi l'icona di avviso
+            bold_text=$NC  # Nessun grassetto se sotto la soglia
+        else
+            free_color=$GREEN  # Altrimenti, usa il verde
+            volume_icon=" "  # Nessuna icona
+            bold_text=$BOLD  # Rendi il testo in grassetto se sopra la soglia
+        fi
+
+        # Stampa con tabulazione migliorata, colori, icona, valore della soglia formattato e percentuale
+        printf "${CYAN}Volume: %-20s${NC} ${GREEN}Total: %-8s ${free_color}Free: %-8s (%s%%)${NC} ${bold_text}${volume_icon}${NC} \tThd: %.2f %s\n" "$volname" "$total" "$free" "$free_percentage" "$threshold_value" "$unit"
+    fi
+done
